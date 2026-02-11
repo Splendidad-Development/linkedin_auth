@@ -54,19 +54,8 @@ Excited for what’s ahead.
                 throw new Exception('LinkedIn access token has expired. Please reconnect your account.');
             }
 
-            $imageAbsolutePath = null;
-            $candidateImagePaths = [
-                public_path('images/campaign-image.png'),
-                public_path('images/campaign-image.jpg'),
-            ];
-            foreach ($candidateImagePaths as $candidatePath) {
-                if (file_exists($candidatePath)) {
-                    $imageAbsolutePath = $candidatePath;
-                    break;
-                }
-            }
-
-            $dedupHash = hash('sha256', $request->caption.'|'.($imageAbsolutePath ? sha1_file($imageAbsolutePath) : 'no-image'));
+            $imageAbsolutePath = public_path('images/campaign-image.png');
+            $dedupHash = hash('sha256', $request->caption.'|'.(file_exists($imageAbsolutePath) ? sha1_file($imageAbsolutePath) : 'no-image'));
             if ($linkedinAccount->last_post_hash === $dedupHash) {
                 throw new Exception('Duplicate post detected. Please change the caption or wait before posting again.');
             }
@@ -74,7 +63,7 @@ Excited for what’s ahead.
             $imageUrn = null;
 
             $authorUrn = 'urn:li:person:' . $linkedinAccount->linkedin_id;
-            if ($imageAbsolutePath) {
+            if (file_exists($imageAbsolutePath)) {
                 $imageUrn = $this->linkedInService->uploadImage($linkedinAccount->access_token, $authorUrn, $imageAbsolutePath);
             }
 
