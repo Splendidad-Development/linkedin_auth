@@ -151,6 +151,28 @@ class LinkedInService
 
                     $result = json_decode($response->getBody()->getContents(), true);
                     Log::info('LinkedIn API - UGC post created', ['result' => $result, 'attempt' => $attempt]);
+
+                    // Verify the post by fetching it immediately (helps detect visibility/permission issues)
+                    $postId = $result['id'] ?? null;
+                    if ($postId) {
+                        try {
+                            $verifyResponse = $this->client->get("{$this->baseUrl}/ugcPosts/{$postId}", [
+                                'headers' => [
+                                    'Authorization' => "Bearer {$accessToken}",
+                                ],
+                            ]);
+                            $verifyData = json_decode($verifyResponse->getBody()->getContents(), true);
+                            Log::info('LinkedIn API - UGC post verification', ['post_id' => $postId, 'data' => $verifyData]);
+                        } catch (RequestException $verifyErr) {
+                            $verifyBody = $verifyErr->hasResponse() ? $verifyErr->getResponse()->getBody()->getContents() : 'No response body';
+                            Log::warning('LinkedIn API - Could not verify created post', [
+                                'post_id' => $postId,
+                                'status_code' => $verifyErr->getCode(),
+                                'response_body' => $verifyBody,
+                            ]);
+                        }
+                    }
+
                     return $result;
                 } catch (RequestException $e) {
                     $responseBody = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : 'No response body';
