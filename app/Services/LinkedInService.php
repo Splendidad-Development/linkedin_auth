@@ -132,18 +132,81 @@ class LinkedInService
                 ];
             }
 
-            $response = $this->client->post("{$this->baseUrl}/ugcPosts", [
-                'headers' => [
-                    'Authorization' => "Bearer {$accessToken}",
-                ],
-                'json' => $postData,
+            Log::info('LinkedIn API - Creating UGC post', [
+                'payload' => $postData,
+                'image_urn' => $imageUrn,
             ]);
 
-            return json_decode($response->getBody()->getContents(), true);
-        } catch (RequestException $e) {
+            $attempt = 0;
+            $maxAttempts = 2;
+            while ($attempt < $maxAttempts) {
+                $attempt++;
+                try {
+                    $response = $this->client->post("{$this->baseUrl}/ugcPosts", [
+                        'headers' => [
+                            'Authorization' => "Bearer {$accessToken}",
+                        ],
+                        'json' => $postData,
+                    ]);
+
+                    $result = json_decode($response->getBody()->getContents(), true);
+                    Log::info('LinkedIn API - UGC post created', ['result' => $result, 'attempt' => $attempt]);
+                    return $result;
+                } catch (RequestException $e) {
+                    $responseBody = $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : 'No response body';
+                    $statusCode = $e->getCode();
+                    Log::warning('LinkedIn API - Create Post attempt failed', [
+                        'attempt' => $attempt,
+                        'status_code' => $statusCode,
+                        'response_body' => $responseBody,
+                    ]);
+
+                    // If this looks like an asset-not-ready error and we have retries left, wait and retry
+                    $isAssetNotReady = $this->isAssetNotReadyError($responseBody);
+                    if ($isAssetNotReady && $attempt < $maxAttempts) {
+                        $waitSeconds = 3 * $attempt; // 3s, then 6s
+                        Log::info("LinkedIn API - Asset not ready, retrying in {$waitSeconds}s", ['attempt' => $attempt]);
+                        sleep($waitSeconds);
+                        continue;
+                    }
+
+                    // Otherwise rethrow
+                    Log::error('LinkedIn API - Create Post Error: ' . $e->getMessage(), [
+                        'response_body' => $responseBody,
+                        'status_code' => $statusCode,
+                    ]);
+                    throw new Exception('Failed to create post: ' . $e->getMessage());
+                }
+            }
+
+            // Should never reach here
+            throw new Exception('Failed to create post after retries.');
+        } catch (Exception $e) {
             Log::error('LinkedIn API - Create Post Error: ' . $e->getMessage());
-            throw new Exception('Failed to create post: ' . $e->getMessage());
+            throw $e;
         }
+    }
+
+    /**
+     * Detect LinkedIn responses that indicate the uploaded asset is not yet ready.
+     */
+    private function isAssetNotReadyError(string $responseBody): bool
+    {
+        $lower = strtolower($responseBody);
+        $keywords = [
+            'asset not found',
+            'asset not ready',
+            'media not ready',
+            'invalid media',
+            'media artifact not found',
+            'processing',
+        ];
+        foreach ($keywords as $kw) {
+            if (strpos($lower, $kw) !== false) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function refreshToken(string $refreshToken): array
