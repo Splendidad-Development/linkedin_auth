@@ -156,7 +156,9 @@ class LinkedInService
                     $postId = $result['id'] ?? null;
                     if ($postId) {
                         try {
-                            $verifyResponse = $this->client->get("{$this->baseUrl}/ugcPosts/{$postId}", [
+                            // Extract the numeric part from the share URN for GET
+                            $numericId = preg_replace('/^urn:li:share:/', '', $postId);
+                            $verifyResponse = $this->client->get("{$this->baseUrl}/socialActions/{$numericId}", [
                                 'headers' => [
                                     'Authorization' => "Bearer {$accessToken}",
                                 ],
